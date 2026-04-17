@@ -1,0 +1,5 @@
+.*
+!.gitignore
+junk
+notebooks
+*__pycache__*
