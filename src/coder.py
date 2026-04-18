@@ -2,10 +2,10 @@ import os
 import dotenv
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.graph import MessagesState
+from .utils import State
+
 from langchain_groq import ChatGroq
 
-# for tools
 from langchain.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -15,7 +15,7 @@ dotenv.load_dotenv()
 
 @tool
 def multiply(a: int, b: int) -> int:
-    """Multiply two integers."""
+    """multiplies two numbers"""
     return a * b
 
 
@@ -28,17 +28,17 @@ model = ChatGroq(
 
 model = model.bind_tools([multiply])
 
-def call_llm(state: MessagesState) -> dict:
+def call_llm(state: State) -> dict:
     response = model.invoke(state["messages"])
     print(response.text)
     print()
     return {"messages": [response]}
 
-def get_input(state: MessagesState) -> dict:
+def get_input(state: State) -> dict:
     user_response = input()
     return {"messages": [{"role": "user", "content": user_response}]}
 
-def decide_to_stop(state: MessagesState) -> dict:
+def decide_to_stop(state: State) -> dict:
     if getattr(state["messages"][-1], "text", "") == "":
         return "__end__"
     else:
@@ -46,7 +46,7 @@ def decide_to_stop(state: MessagesState) -> dict:
     
 tool_node = ToolNode([multiply])
 
-builder = StateGraph(MessagesState)
+builder = StateGraph(State)
 builder.add_node("llm", call_llm)
 builder.add_node("user", get_input)
 builder.add_node("tools", tool_node)
