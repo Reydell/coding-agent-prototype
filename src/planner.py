@@ -21,4 +21,10 @@ model = ChatGroq(
 
 
 def call_llm(state: State) -> dict:
-    
+    response = model.invoke(state["messages"])
+    return {'messages': [response]}
+
+
+
+
+

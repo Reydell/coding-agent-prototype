@@ -1,4 +1,4 @@
-from langchain.graph import add_messages
+from langgraph.graph import add_messages
 from typing import Annotated, TypedDict
 
 
@@ -15,6 +15,5 @@ def draw_mermaid(graph, path, v=0):
         print(f"Graph mermaid saved to {path}")
 
 
-
-class State(TypedDict):
-    messages: Annotated[list, add_messages]
+def red(value):
+    print(f"\033[31m{value}\033[0m")
