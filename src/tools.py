@@ -41,10 +41,21 @@ class CreateDiffArgs(BaseModel):
 
 
 
-@tool
-def choose_subagent(agent: Literal['coder']) -> Literal['coder']:
-    """Choose subagent to call"""
-    return agent
+@tool # todo: add args schema here because now it is hard to understand
+def choose_subagent(agent: Literal['coder'], command: str, runtime: ToolRuntime) -> Command:
+    """Call a subagent with a specific command to it."""
+    return Command(
+        update={
+            "subagent": agent,
+            "command": command,
+            "messages": [
+                ToolMessage(
+                    content=f"Called {agent} agent.",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ],
+        }
+    )
 
 
 @tool(args_schema=GrepArgs)
