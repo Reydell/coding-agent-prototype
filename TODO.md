@@ -8,3 +8,5 @@
 4. add planner in the loop to edit multiple lines (one at a time)
 
 5. add error handling
+
+6. add logging
