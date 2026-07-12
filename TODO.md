@@ -10,3 +10,5 @@
 5. add error handling
 
 6. add logging
+
+7. calculate token usage

@@ -1,5 +1,6 @@
 .*
 !.gitignore
+AGENTS.md
 junk
 notebooks
 *__pycache__*

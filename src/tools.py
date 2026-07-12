@@ -13,6 +13,10 @@ import re
 
 from .utils import red
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 
 class GrepReturnType(TypedDict):
     file_path: str
@@ -44,6 +48,9 @@ class CreateDiffArgs(BaseModel):
 @tool # todo: add args schema here because now it is hard to understand
 def choose_subagent(agent: Literal['coder'], command: str, runtime: ToolRuntime) -> Command:
     """Call a subagent with a specific command to it."""
+
+    logger.warning("TODO: add args schema")
+
     return Command(
         update={
             "subagent": agent,
@@ -59,8 +66,9 @@ def choose_subagent(agent: Literal['coder'], command: str, runtime: ToolRuntime)
 
 
 @tool(args_schema=GrepArgs)
-def grep(regex, root) -> List[GrepReturnType] | LiteralString:
-    """Recursive search through a folder or a file using regex."""
+def grep(regex, root) -> List[GrepReturnType]:
+    """Recursive search through a folder or a file using regex.
+    This tool does not search by file name, only by content."""
 
     red(f'grep {regex} {root}')
 
@@ -68,20 +76,19 @@ def grep(regex, root) -> List[GrepReturnType] | LiteralString:
         root = f"./{root}"
 
     if "\\" in root:
-        return "Error: use MacOS path syntax." 
+        raise ValueError("Use MacOS path syntax.")
     if ".." in root:
-        return "Error: path must not leave working directory!"
+        raise ValueError("path must not leave working directory!")
     if '~' in root:
-        return "Error: absolute path search prohibited!"
+        raise ValueError("absolute path search prohibited!")
     
     path = "generated_project/" + root.rstrip('.')[2:]
+    if path.startswith('generated_project/generated_project'):
+        path = path.replace("generated_project/generated_project", "generated_project")
+
     red(f'normalized path {path}')
 
-    try:
-        pattern = re.compile(regex)
-    except Exception as e:
-        red(1)
-        return "Error: invalid regex!"
+    pattern = re.compile(regex) # this can raise an error
 
     res = []
     lines = None
@@ -97,13 +104,11 @@ def grep(regex, root) -> List[GrepReturnType] | LiteralString:
 
                 res.extend(lines)
             except Exception as e:
-                red(2)
                 pass
     
     if res:
-        red(res)
+        logger.debug(str(res))
         return res
-    red(3)
     return "Error: no matches found!"
 
 @tool(args_schema=ReadFileArgs)
@@ -114,7 +119,8 @@ def read_file(path) -> List[CodeLineType] | LiteralString:
 
     if not path.startswith("./"):
         path = f"./{path}"
-
+    
+    # todo: change to raise ValueError
     if "\\" in path:
         return "Error: use MacOS path syntax." 
     if ".." in path:
@@ -123,6 +129,8 @@ def read_file(path) -> List[CodeLineType] | LiteralString:
         return "Error: absolute path search prohibited!"
     
     path = "generated_project/" + path.rstrip('.')[2:]
+    if path.startswith('generated_project/generated_project'):
+        path = path.replace("generated_project/generated_project", "generated_project")
     red(f'normalized path {path}')
     path = Path(path)
 
@@ -144,14 +152,17 @@ def read_file(path) -> List[CodeLineType] | LiteralString:
 
 
 @tool(args_schema=CreateDiffArgs)
-def create_diff(
+def stage_diff(
     path: str,
     line_number: int,
     line_text: str,
     runtime: ToolRuntime,
 ) -> Command:
     """Choose a file, line number and text to replace it with. This only stages the diff."""
-    red(f"create diff {path} {line_number} {line_text}")
+
+    logger.info("path=%r, line_number=%d, line_text=%s", path, line_number, line_text)
+
+
     return Command(
         update={
             "diff": {
@@ -169,43 +180,57 @@ def create_diff(
     )
     
 
-@tool
-def apply_diff(runtime: ToolRuntime) -> Command:
-    """Apply current diff."""
-    diff = runtime.state.get("diff")
-    path = diff["path"]
-    line_number = diff["line_number"]
-    line_text = diff["line_text"]
+def apply_diff(diff: Dict) -> str:
+    """Apply a staged diff to the generated project."""
 
-    if not path.startswith("./"):
-        path = f"./{path}"
+    try:
+        logger.info("Applying staged diff")
 
-    if "\\" in path:
-        return "Error: use MacOS path syntax." 
-    if ".." in path:
-        return "Error: path must not leave working directory!"
-    if '~' in path:
-        return "Error: absolute path search prohibited!"
-    
-    path = "generated_project/" + path.rstrip('.')[2:]
+        if not diff:
+            logging.error("Coder agent is trying to apply and empty diff!")
+            raise ValueError("Empty diff.")
 
-    red(f"apply_diff {path}")
+        path = diff["path"]
+        line_number = diff["line_number"]
+        line_text = diff["line_text"]
 
-    with open(path, 'r') as fin:
-        lines = [line.strip("\n") for line in fin]
-        lines[line_number] = line_text
-    with open(path, 'w') as fout:
-        for line in lines:
-            print(line, file=fout)
+        if not path.startswith("./"):
+            path = f"./{path}"
 
-    return Command(
-        update={
-            "diff": {},
-            "messages": [
-                ToolMessage(
-                    content=f"Applied diff for {path}:{line_number}",
-                    tool_call_id=runtime.tool_call_id,
-                )
-            ],
+        if "\\" in path:
+            return "Error: use MacOS path syntax." 
+        if ".." in path:
+            return "Error: path must not leave working directory!"
+        if '~' in path:
+            return "Error: absolute path search prohibited!"
+        
+        path = "generated_project/" + path.rstrip('.')[2:]
+
+        red(f"apply_diff {path}")
+
+        with open(path, 'r') as fin:
+            lines = [line.strip("\n") for line in fin]
+            old_text = lines[line_number]
+            lines[line_number] = line_text
+        with open(path, 'w') as fout:
+            for line in lines:
+                print(line, file=fout)
+
+        edit_result = {
+            "status": "applied",
+            "path": diff['path'],
+            "line_number": line_number,
+            "old_text": old_text,
+            "new_text": line_text,
+            "error": "No errors!"
         }
-    )
+    
+    except Exception as e:
+        edit_result = {
+            "status": "error",
+            "path": diff['path'],
+            "line_number": line_number,
+            "error": f"{e}"
+        }
+
+    return edit_result
